@@ -1,0 +1,9 @@
+# Anchored to the repository root, all three of them. An unanchored `gen/`
+# matches a directory named gen at any depth -- which silently excluded the
+# whole of protobuf/digitalbuildings/electrical/gen/ (ELECTRICAL/GEN, the
+# generator) from the repository while `just ci` passed on the working tree.
+/gen/
+/build/
+/schema/
+descriptors.binpb
+.DS_Store

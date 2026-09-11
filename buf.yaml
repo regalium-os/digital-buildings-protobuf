@@ -1,0 +1,47 @@
+version: v2
+# Published to the BSR as a schema-only module. Consumers depend on it and run
+# their own codegen -- nothing is generated here, which is why no file carries
+# a go_package. See buf.gen.yaml.
+#
+# The module is rooted at the repository root, not at protobuf/, so that
+# protobuf/ is itself the first package segment: protobuf/digitalbuildings/
+# hvac/fcu/v1 resolves to package protobuf.digitalbuildings.hvac.fcu.v1 and
+# PACKAGE_DIRECTORY_MATCH holds without a redundant directory inside it.
+modules:
+  - path: .
+    name: buf.build/regalium-os/digital-buildings
+    # build/ holds the exported dependency trees the buffers CLI compiles
+    # against, written by scripts/export-protos.sh. They are copies of
+    # googleapis, protovalidate and the well-known types, so compiling them
+    # here would both duplicate every symbol and drag protoc's own edition
+    # files into a module that targets proto3.
+    excludes:
+      - build
+      # modules/ holds the upstream ontology checkout. digitalbuildings ships
+      # ibr/ibr_sdk/proto/ibr.proto -- a different model, for spatial data,
+      # that this repository neither reads nor owns. Without this exclude it
+      # would enter the module silently, be linted against rules it was never
+      # written for, and be published to the BSR as though we wrote it.
+      - modules
+deps:
+  - buf.build/bufbuild/protovalidate
+  - buf.build/googleapis/googleapis
+  # telemetry.v1 -- OpenTelemetry instrumentation annotations (rule 5).
+  - buf.build/the-protobuf-project/telemetry
+lint:
+  # BASIC, not STANDARD, and no exception list.
+  #
+  # buf and api-linter overlap on API design, and where they overlap they
+  # contradict: buf STANDARD wants FanCoilUnitsService and
+  # GetFanCoilUnitResponse wrappers, AIP-131 wants FanCoilUnits returning
+  # FanCoilUnit. Rather than except individual rules, the two tools are given
+  # non-overlapping jobs. buf BASIC checks structure -- package/directory
+  # agreement, one package per directory, import hygiene, casing. api-linter
+  # is the sole authority on API design.
+  #
+  # Every rule in the selected category is enforced. Nothing is excepted.
+  use:
+    - BASIC
+breaking:
+  use:
+    - FILE

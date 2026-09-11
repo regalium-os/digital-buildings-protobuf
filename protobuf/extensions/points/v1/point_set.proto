@@ -1,0 +1,66 @@
+// Copyright 2026 RegaliumOS™.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Hand-written, and deliberately so. This is protobuf/extensions/ (rule 16),
+// where a fixed schema is written rather than emitted: PointSet is one message
+// designed once, and a generator producing fixed proto text would be worse
+// than the proto. `just sync` does not touch this root.
+//
+// The generated root is protobuf/digitalbuildings/. Do not move this file
+// there -- the next regenerate would delete it.
+
+syntax = "proto3";
+
+package protobuf.extensions.points.v1;
+
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/timestamp.proto";
+import "protobuf/extensions/points/v1/point_value.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "PointSetProto";
+option java_package = "com.regalium.protobuf.extensions.points.v1";
+
+// A batch of readings from one entity at one instant.
+//
+// This mirrors the payload Google's own instance validator already accepts --
+// a timestamp, a map of field literal to value, and a partial-update flag --
+// so a gateway's existing output maps onto it without negotiation.
+message PointSet {
+  // The entity these readings belong to, by resource name:
+  // `buildings/hq/fanCoilUnits/fcu-3-02`.
+  //
+  // `type = "*"` because the entity may be any resource in any namespace,
+  // the same reason Connection and Link carry it. It is also what lets this
+  // package name a FanCoilUnit without importing its proto package, so no
+  // AIP-215 cross-package reference is created and no ontology pin enters
+  // this package's release cadence.
+  string entity = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "*"
+  ];
+
+  // When the device sampled these readings -- not when the server received
+  // them. AIP-142 requires the `_time` suffix; the ontology calls the same
+  // thing `timestamp`.
+  google.protobuf.Timestamp sample_time = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The readings, keyed by ontology field literal:
+  // `zone_air_temperature_sensor`.
+  //
+  // A string key is a deliberate trade against rule 5, which holds that a
+  // field's identity is the set of its subfields and not its name. It is
+  // acceptable only because the key is resolvable: the ontology vocabulary
+  // is published as its own packages, so a consumer can ask what a literal
+  // means rather than parse it. Until those packages exist this key is a
+  // string nobody can check, which is the argument for emitting them next.
+  map<string, PointValue> points = 3 [(google.api.field_behavior) = REQUIRED];
+
+  // Whether this is a delta rather than a full report.
+  //
+  // The ontology's `partial_update`. A consumer that ignores it and treats
+  // every set as complete will read absent points as absent readings, which
+  // silently zeroes most of a device on every partial flush.
+  bool partial = 4 [(google.api.field_behavior) = OPTIONAL];
+}

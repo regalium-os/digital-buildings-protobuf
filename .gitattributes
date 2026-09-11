@@ -1,0 +1,8 @@
+# The ordinal ledger records which target slot every field was assigned. A
+# conflict in it means two branches each assigned a slot, and deciding which
+# wins is a compatibility decision -- so git must not guess by merging lines.
+buffers.lock -merge
+
+*.proto  linguist-detectable=true
+*.fbs    linguist-detectable=true
+*.capnp  linguist-detectable=true

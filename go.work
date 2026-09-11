@@ -1,0 +1,8 @@
+// Only ./sync is a workspace member.
+//
+// gen/ is deliberately not one: `buf generate` writes Go there for the build
+// check, and a build inside a non-member module fails while the workspace is
+// active. `just build-go` sets GOWORK=off for exactly that reason.
+go 1.24
+
+use ./sync

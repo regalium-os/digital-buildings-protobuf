@@ -1,0 +1,81 @@
+// Copyright 2026 RegaliumOS™.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Hand-written, and deliberately so. This is protobuf/extensions/ (rule 16),
+// where a fixed schema is written rather than emitted: PointSet is one message
+// designed once, and a generator producing fixed proto text would be worse
+// than the proto. `just sync` does not touch this root.
+//
+// The generated root is protobuf/digitalbuildings/. Do not move this file
+// there -- the next regenerate would delete it.
+
+syntax = "proto3";
+
+package protobuf.extensions.points.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "protobuf/extensions/points/v1/messages.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "ServiceProto";
+option java_package = "com.regalium.protobuf.extensions.points.v1";
+
+// Carries point readings into and out of the building model.
+//
+// This is the data plane, and it is deliberately separate from the resources
+// in protobuf/digitalbuildings/. Those model what a thing *is* -- its type,
+// its connections, which device point feeds which standard field -- and every
+// telemetry field on them is OUTPUT_ONLY, because the equipment reports it
+// and no API call sets it (rule 8). That makes CRUD the right shape for
+// configuration and no shape at all for a reading: there is no legal way to
+// write a sensor value through Update, and a resource holds one value per
+// field rather than a series.
+//
+// So readings do not travel as resource writes. They travel here, keyed by
+// ontology field literal, and the resources stay a statement about what the
+// building is rather than a log of what it did.
+//
+// Every method is an AIP-136 custom method: a POST to a collection with a
+// colon verb. None of them is CRUD, because none of them is about the
+// lifecycle of a resource.
+service Points {
+  option (google.api.default_host) = "digitalbuildings.googleapis.com";
+
+  // Stores a batch of readings.
+  //
+  // The common case: a gateway flushing what it has collected on an interval.
+  // Partial success is the normal outcome -- the response names what was
+  // refused rather than failing the call.
+  rpc ReportPoints(ReportPointsRequest) returns (ReportPointsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=buildings/*}/points:report"
+      body: "*"
+    };
+  }
+
+  // Stores readings continuously over an open stream.
+  //
+  // For a gateway with a live connection, where opening a request per flush
+  // would dominate the cost of sending the reading.
+  rpc StreamPoints(stream StreamPointsRequest) returns (StreamPointsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=buildings/*}/points:stream"
+      body: "*"
+    };
+  }
+
+  // Follows readings as they arrive, for a dashboard or a commissioning
+  // screen.
+  //
+  // Server-streaming rather than bidirectional on purpose: HTTP/1.1 cannot
+  // carry a bidi stream, and core::0127::http-annotation forbids the
+  // google.api.http annotation on one -- which would leave this method
+  // unreachable over REST for no gain.
+  rpc WatchPoints(WatchPointsRequest) returns (stream WatchPointsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=buildings/*}/points:watch"
+      body: "*"
+    };
+  }
+}

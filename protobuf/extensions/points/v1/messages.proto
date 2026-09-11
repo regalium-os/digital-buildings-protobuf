@@ -1,0 +1,135 @@
+// Copyright 2026 RegaliumOS™.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Hand-written, and deliberately so. This is protobuf/extensions/ (rule 16),
+// where a fixed schema is written rather than emitted: PointSet is one message
+// designed once, and a generator producing fixed proto text would be worse
+// than the proto. `just sync` does not touch this root.
+//
+// The generated root is protobuf/digitalbuildings/. Do not move this file
+// there -- the next regenerate would delete it.
+
+syntax = "proto3";
+
+package protobuf.extensions.points.v1;
+
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "protobuf/extensions/points/v1/point_rejection.proto";
+import "protobuf/extensions/points/v1/point_set.proto";
+import "telemetry/v1/annotations.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "MessagesProto";
+option java_package = "com.regalium.protobuf.extensions.points.v1";
+
+// Request for ReportPoints.
+message ReportPointsRequest {
+  // Observability comes from telemetry.v1 rather than from anything defined
+  // here: it is the org's vocabulary for exactly this, and reimplementing it
+  // would mean a second way to reach the same Grafana stack.
+  option (telemetry.v1.telemetry) = {
+    enabled: true
+    metrics: true
+    span_prefix: "points"
+  };
+
+  // The building these readings were taken in.
+  //
+  // Labelled for metrics because a building is low-cardinality -- tens, not
+  // thousands. See the note on ReportPointsResponse for what is deliberately
+  // *not* labelled.
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "digitalbuildings.googleapis.com/Building",
+    (telemetry.v1.telemetry_field) = {
+      label: true
+      label_key: "building"
+    }
+  ];
+
+  // The readings. One set per entity per instant; a gateway serving many
+  // devices sends many sets in one call rather than one call per device.
+  repeated PointSet point_sets = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// Response for ReportPoints.
+message ReportPointsResponse {
+  // How many readings were stored.
+  //
+  // This counter is the whole of the metric surface, and that is a decision
+  // rather than an omission. The tempting alternative is to mark
+  // PointValue.number as a gauge, so every reading becomes a time series --
+  // which sounds like the point of the exercise and is a cardinality bomb:
+  // entity x field literal is thousands of entities against 4,733 literals,
+  // and a label space that size is the classic way to take Prometheus down.
+  //
+  // Readings belong in a time-series store sized for them, reached through
+  // this service. What belongs in the metrics pipeline is the health of the
+  // ingest path itself -- how much arrived, how much was refused, how long it
+  // took -- which is low-cardinality and answers "is telemetry flowing?".
+  int32 accepted_count = 1 [
+    (google.api.field_behavior) = OPTIONAL,
+    (telemetry.v1.metric_field) = {
+      value: true
+      kind: METRIC_KIND_COUNTER
+      metric: "points_accepted"
+    }
+  ];
+
+  // The readings that were not, and why. Empty on a clean flush.
+  repeated PointRejection rejections = 2 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Request for StreamPoints. One message per flush on an open stream.
+message StreamPointsRequest {
+  // The building these readings were taken in. Repeated on every message
+  // because an HTTP path variable must bind to a field of the request, and
+  // a streamed request has no other place to carry it.
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "digitalbuildings.googleapis.com/Building"
+  ];
+
+  // The readings for this flush.
+  PointSet point_set = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// Response for StreamPoints, returned once when the stream closes.
+message StreamPointsResponse {
+  // How many readings were stored across the whole stream.
+  int64 accepted_count = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  // Everything refused across the whole stream.
+  repeated PointRejection rejections = 2 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Request for WatchPoints.
+message WatchPointsRequest {
+  // The building to watch.
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "digitalbuildings.googleapis.com/Building"
+  ];
+
+  // Entities to watch, by resource name. Empty watches every entity in the
+  // building, which is the right default for a commissioning screen and the
+  // wrong one for anything long-lived.
+  repeated string entities = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // Ontology field literals to watch. Empty watches every field the matched
+  // entities report.
+  repeated string literals = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Response for WatchPoints. One message per reading set, for as long as the
+// stream is open.
+//
+// A wrapper rather than a bare PointSet, because AIP-136 names a method's
+// response after the method -- and because a stream that only ever carries
+// readings has nowhere to put a heartbeat or a resume token, which is a
+// breaking change to add later.
+message WatchPointsResponse {
+  // The readings.
+  PointSet point_set = 1 [(google.api.field_behavior) = OPTIONAL];
+}

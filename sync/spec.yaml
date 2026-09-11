@@ -1,0 +1,16 @@
+# The ontology revision this schema is generated from. Rule 9.
+#
+# `commit` is the upstream commit, `date` is *that commit's* date, not the day
+# the pin was edited. Both are stamped into every generated banner, so "which
+# ontology is this from?" is answerable from any single .proto a consumer
+# holds.
+#
+# Bumping this is a deliberate act: move the checkout, edit both fields, run
+# `just sync`, and record what moved in docs/spec.md. `just spec` checks this
+# file against modules/digitalbuildings and fails if they disagree.
+ontology:
+  repository: https://github.com/google/digitalbuildings
+  commit: 4a794acf6f01faa88a61f3740bf8d10dacee2483
+  date: 2026-09-09
+  # Relative to the submodule root.
+  path: ontology/yaml/resources

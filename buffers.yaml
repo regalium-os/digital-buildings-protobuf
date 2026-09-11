@@ -1,0 +1,38 @@
+# The serialization layers: FlatBuffers and Cap'n Proto, from the same protos.
+#
+# Reads a descriptor set rather than the .proto tree, because these protos
+# import googleapis and protovalidate and buf has already resolved both.
+# Compiling from source here would mean finding google/api/*.proto on disk,
+# which is the resolution problem buf exists to solve.
+#
+# Regenerate the set with:
+#   buf build -o descriptors.binpb --as-file-descriptor-set
+#
+# `strict` is deliberately empty, and scripts/schema.sh supplies the gate
+# instead. A descriptor set carries every import, so the run sees
+# protovalidate's own messages too -- and four of them have unreserved field
+# gaps this repository cannot fix. Failing the build on another project's
+# schema would mean either vendoring a patched copy or turning the check off
+# altogether. The script instead fails on any ordinal diagnostic naming a
+# `protobuf.digitalbuildings.` symbol, which is the schema this repository actually
+# owns and the only one whose slots it can keep stable.
+version: v1
+
+proto:
+  descriptor_set: descriptors.binpb
+
+out: schema
+lock: buffers.lock
+strict: ""
+
+generate:
+  # FlatBuffers reaches the widest set of languages of any target here, and is
+  # what a client that must run everywhere should use. Every field gets an
+  # explicit id:, so the vtable layout is a property of the schema rather than
+  # of declaration order.
+  - target: flatbuffers
+
+  # Cap'n Proto, for the zero-copy read path. Its ordinals are 0-based and
+  # contiguous where proto field numbers are 1-based and sparse, which is
+  # exactly the mismatch the ledger polices.
+  - target: capnp

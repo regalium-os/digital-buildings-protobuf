@@ -1,0 +1,65 @@
+// Copyright 2026 RegaliumOS™.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Hand-written, and deliberately so. This is protobuf/extensions/ (rule 16),
+// where a fixed schema is written rather than emitted: PointSet is one message
+// designed once, and a generator producing fixed proto text would be worse
+// than the proto. `just sync` does not touch this root.
+//
+// The generated root is protobuf/digitalbuildings/. Do not move this file
+// there -- the next regenerate would delete it.
+
+syntax = "proto3";
+
+package protobuf.extensions.points.v1;
+
+import "google/api/field_behavior.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "PointRejectionProto";
+option java_package = "com.regalium.protobuf.extensions.points.v1";
+
+// One reading the server refused, and why.
+//
+// Refusals are reported rather than thrown: a gateway flushing 300 points
+// should not lose 299 good readings because one literal was misspelled, and
+// an operator needs to see which point is wrong rather than that something
+// was. The accepted readings are stored; these are returned.
+message PointRejection {
+  // The ontology field literal as it was sent.
+  string literal = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  // Why it was refused.
+  RejectionReason reason = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // What a person should do about it, where the reason alone is not enough --
+  // the expected unit, or the states the field actually admits.
+  string detail = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Why a reading was refused.
+enum RejectionReason {
+  // Default. The reason was not reported.
+  REJECTION_REASON_UNSPECIFIED = 0;
+
+  // The literal is not in the ontology at all -- a typo, or a device point
+  // that was never mapped to a standard field.
+  REJECTION_REASON_UNKNOWN_LITERAL = 1;
+
+  // The literal exists, but the entity's declared canonical type does not
+  // use it. This is the check the canonical-type annotation exists to make
+  // possible (rule 7).
+  REJECTION_REASON_NOT_ON_TYPE = 2;
+
+  // A numeric field was sent a state, or the reverse.
+  REJECTION_REASON_WRONG_VALUE_KIND = 3;
+
+  // The state is not one the field's state set admits.
+  REJECTION_REASON_UNKNOWN_STATE = 4;
+
+  // The value is outside a bound the ontology states as fixed. A flexible
+  // bound never causes a refusal: it is a data-quality expectation, and a
+  // reading outside it is a fault to report rather than a message to reject
+  // (rule 13).
+  REJECTION_REASON_OUT_OF_FIXED_RANGE = 5;
+}

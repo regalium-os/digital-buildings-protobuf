@@ -1,0 +1,3 @@
+[submodule "modules/digitalbuildings"]
+	path = modules/digitalbuildings
+	url = https://github.com/google/digitalbuildings

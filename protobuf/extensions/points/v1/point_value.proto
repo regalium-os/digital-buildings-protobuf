@@ -1,0 +1,58 @@
+// Copyright 2026 RegaliumOS™.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Hand-written, and deliberately so. This is protobuf/extensions/ (rule 16),
+// where a fixed schema is written rather than emitted: PointSet is one message
+// designed once, and a generator producing fixed proto text would be worse
+// than the proto. `just sync` does not touch this root.
+//
+// The generated root is protobuf/digitalbuildings/. Do not move this file
+// there -- the next regenerate would delete it.
+
+syntax = "proto3";
+
+package protobuf.extensions.points.v1;
+
+import "google/api/field_behavior.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "PointValueProto";
+option java_package = "com.regalium.protobuf.extensions.points.v1";
+
+// One reading from one point.
+//
+// Which arm of the oneof carries the reading follows from the field's own
+// definition in the ontology, not from anything in this message: a literal
+// with a numeric range is a `number`, one with a state list is a `state`, and
+// the handful modelled as booleans are a `flag`. A consumer that does not
+// already know which is which resolves the literal against the ontology
+// vocabulary rather than guessing from the wire.
+message PointValue {
+  // The reading, in whichever form the field's definition calls for.
+  oneof value {
+    // A numeric reading, in the standard unit the ontology pins for the
+    // field's measurement -- kelvin, pascals, cubic metres per second. The
+    // unit is never carried beside the value: two producers of one field
+    // could then disagree about what the number means, which is the single
+    // failure the ontology is most careful to prevent (rule 13).
+    double number = 1 [(google.api.field_behavior) = OPTIONAL];
+
+    // A multistate reading, named by the ontology's own state -- `ACTIVE`,
+    // `OPEN`, `ON`. Deliberately a string rather than an enum: which of the
+    // 40 shared multistate enums applies depends on which field the key
+    // names, so no single enum type can be correct here and a wrong one
+    // would be worse than none.
+    string state = 2 [(google.api.field_behavior) = OPTIONAL];
+
+    // A boolean reading, for the state sets modelled as a bool.
+    bool flag = 3 [(google.api.field_behavior) = OPTIONAL];
+  }
+
+  // The device's native value, exactly as reported, before unit and state
+  // translation were applied.
+  //
+  // Kept because translation is lossy in the direction that matters for
+  // debugging: once `1` has become `OPEN` there is no way back to the device
+  // point that produced it, and a mis-mapped state is invisible without this.
+  string raw = 4 [(google.api.field_behavior) = OPTIONAL];
+}

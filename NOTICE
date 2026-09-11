@@ -1,0 +1,9 @@
+Digital Buildings Protobuf
+Copyright 2026 RegaliumOS™
+
+This product includes software developed at RegaliumOS™ (https://www.regalium.com/).
+
+The .proto schemas under protobuf/digitalbuildings/ are generated from the
+Digital Buildings ontology, Copyright 2020 Google LLC, licensed under the
+Apache License, Version 2.0. The ontology itself is not redistributed here;
+the pinned revision it is generated from is recorded in sync/spec.yaml.
