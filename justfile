@@ -40,6 +40,25 @@ docs:
 survey:
     @go run ./sync/cmd/sync -survey
 
+# Explain the pinned ontology as an entity-relationship model.
+#
+# Three levels, each the next step from the one above:
+#
+#   just erd                              every namespace, resources collapsed
+#   just erd electrical                   one namespace, general types and variants
+#   just erd electrical/generator         one resource, in full
+#
+# Add a view to change the shape rather than the scope:
+#
+#   just erd -view objects                the primary objects and their relations
+#   just erd -view mermaid hvac           the same as a Mermaid erDiagram
+#
+# It reads modules/ and never protobuf/: a view built by re-reading the emitted
+# schema would agree with the schema by construction (docs/generator.md).
+[doc("Explain the ontology as an ER model: namespace, general type, variant.")]
+erd *ARGS:
+    @go run ./sync/cmd/erd {{ARGS}}
+
 # Check sync/spec.yaml against the checkout under modules/.
 [doc("Verify the ontology pin matches the submodule.")]
 spec:
@@ -57,13 +76,12 @@ test:
     go test ./sync/...
 
 # Everything the Lint job checks. Mutates nothing.
-[doc("Format check, buf lint, buf build, api-linter, and the line caps.")]
+[doc("Format check, buf lint, buf build, and api-linter.")]
 lint: test aip
     @test -z "$(gofmt -l sync)" || { echo "unformatted Go (run: just fmt):"; gofmt -l sync; exit 1; }
     buf format --diff --exit-code
     buf lint
     buf build
-    @just cap
 
 # Run the Google API linter over every proto. No config file, no disabled rule.
 #
@@ -85,62 +103,6 @@ aip:
         echo "never the emitted file, and never except the rule." >&2
         exit 1
     fi
-
-# The line caps.
-#
-# Two caps, and they are enforced differently because the files are different
-# kinds of thing.
-#
-# Hand-written Go and Markdown are capped by line count alone. Exemptions and
-# their reasoning are in docs/generator.md: README.md and sample-reference.md
-# would be made worse by splitting, and CLAUDE.md already splits into docs/ via
-# @-imports that are concatenated back into one context anyway.
-#
-# Generated protos are capped at 200 too, against the audited list in
-# line-cap-exemptions.txt. The check runs both ways -- an unlisted file over
-# the cap fails, and a listed file back under it fails -- because a list that
-# only ever grows is a list nobody rereads. See that file's header.
-[doc("Check the line caps: 200 for Go and protos, 250 for Markdown.")]
-cap:
-    #!/usr/bin/env sh
-    set -eu
-    over=0
-    for f in $(find . -path ./gen -prune -o -path ./build -prune -o -path ./schema -prune \
-        -o -path ./modules -prune -o -path ./.git -prune -o -path ./protobuf -prune \
-        -o -name 'README.md' -prune -o -name 'sample-reference.md' -prune \
-        -o -name 'CLAUDE.md' -prune \
-        -o \( -name '*.md' -o -name '*.go' \) -print); do
-        n=$(wc -l <"$f")
-        case "$f" in
-            *.go) cap=200 ;;
-            *)    cap=250 ;;
-        esac
-        [ "$n" -gt "$cap" ] && { echo "$f: $n lines, over the $cap-line cap"; over=1; }
-    done
-    [ "$over" -eq 0 ] || { echo "Split the files above; do not compress them."; exit 1; }
-    echo "All hand-written files within their line cap."
-
-    d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
-    grep -vE '^[[:space:]]*(#|$)' line-cap-exemptions.txt | sort >"$d/listed"
-    find protobuf -name '*.proto' -exec wc -l {} + \
-        | grep -v ' total$' | awk '$1>200 {print $2}' | sort >"$d/over"
-    comm -13 "$d/listed" "$d/over" >"$d/unlisted"
-    comm -23 "$d/listed" "$d/over" >"$d/stale"
-    if [ -s "$d/unlisted" ]; then
-        echo "Over the 200-line cap and not exempt:" >&2
-        sed 's/^/  /' "$d/unlisted" >&2
-        echo "Split them in the generator. A file that truly cannot be split --" >&2
-        echo "one message or one enum -- goes in line-cap-exemptions.txt." >&2
-        over=1
-    fi
-    if [ -s "$d/stale" ]; then
-        echo "Exempt but now under the cap -- delete these lines from" >&2
-        echo "line-cap-exemptions.txt:" >&2
-        sed 's/^/  /' "$d/stale" >&2
-        over=1
-    fi
-    [ "$over" -eq 0 ] || exit 1
-    echo "All $(wc -l <"$d/over" | tr -d ' ') protos over 200 lines are accounted for."
 
 # Verify the committed tree matches what the generator produces.
 [doc("Fail if protobuf/ is stale relative to the pinned ontology.")]

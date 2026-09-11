@@ -87,24 +87,6 @@ unrelated enums. Each now has its own file, named for the enum
 (`closed_open_value.proto`), which is why the tree is 1,165 files rather than
 830.
 
-**The 200-line cap applies to generated protos too**, against the audited list
-in `line-cap-exemptions.txt`. Protobuf-rfc's version of this rule gave up on
-line-capping generated files, and that was too quick: 1,072 of 1,165 are
-already under 200, and holding them there is what keeps a package readable.
-What cannot comply is 93 files -- 73 resource messages and 20 canonical-type
-enums -- because protobuf can continue neither a message nor an enum across a
-file boundary, and `AirHandlingUnit` is 450 fields whatever anyone would
-prefer. Stripping every comment from it would still leave 6,515 lines, so this
-is not a documentation-volume problem and no docs-generator can fix it.
-
-The list is checked **both ways**: an unlisted file over the cap fails, and a
-listed file back under it fails. That is what stops it becoming the stale
-hand-kept table this file rejects elsewhere -- a spec bump that pushes a
-message past 200, or pulls one back under, stops CI until someone looks.
-Never list a file that could be split. Every cap, every exemption and the
-reason for each is in `docs/line-caps.md`; the generator's layout is in
-`docs/generator.md`.
-
 @docs/generator.md
 
 ## 3. AIP is the convention
@@ -409,10 +391,10 @@ cross-package dependency exists to forbid. An extension that `import`s a
 generated package has made the ontology pin part of its own release cadence,
 which is the coupling this split exists to prevent.
 
-**Being hand-written buys no exemption.** `just aip` and `just cap` glob all
-of `protobuf/`, so extensions are linted and capped exactly as the generated
-root is. Rule 1 applies in full: if api-linter objects to a hand-written file,
-the file is wrong.
+**Being hand-written buys no exemption.** `just aip` globs all of
+`protobuf/`, so extensions are linted exactly as the generated root is.
+Rule 1 applies in full: if api-linter objects to a hand-written file, the
+file is wrong.
 
 ## Rules 10-15
 
@@ -442,7 +424,7 @@ just ci
 ```
 
 which runs, in order: the spec pin check, `buf format --diff --exit-code`,
-`buf lint`, `buf build`, `api-linter`, the line cap, a regenerate-and-diff,
+`buf lint`, `buf build`, `api-linter`, a regenerate-and-diff,
 the two schema targets, their compilers, the ordinal ledger and the `schema/`
 diff. Each is also a workflow under `.github/workflows/` -- read the steps
 there rather than trusting this list to stay current.

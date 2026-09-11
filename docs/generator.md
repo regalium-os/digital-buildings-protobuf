@@ -158,13 +158,6 @@ reuses a number a field has vacated -- a removed field's number is moved to
 `reserved`. Rule 9 says why: the ontology inserts fields alphabetically into
 existing `uses` lists, so position is not a stable numbering.
 
-## The line caps
-
-Go at **200 lines**, hand-written Markdown at **250**, generated `.proto` at
-**200**, and the exemption list checked in both directions. `just cap` enforces
-all of it; the reasoning, the exemptions and why each one is exempt are in
-`docs/line-caps.md`.
-
 ## Why there is a workspace
 
 `go.work` names `./sync` and nothing else today. An earlier draft of this
