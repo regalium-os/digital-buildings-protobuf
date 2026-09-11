@@ -9,7 +9,7 @@ version: v2
 # PACKAGE_DIRECTORY_MATCH holds without a redundant directory inside it.
 modules:
   - path: .
-    name: buf.build/regalium-os/digital-buildings
+    name: buf.build/regal-labs/digital-buildings
     # build/ holds the exported dependency trees the buffers CLI compiles
     # against, written by scripts/export-protos.sh. They are copies of
     # googleapis, protovalidate and the well-known types, so compiling them

@@ -30,7 +30,7 @@ As a dependency, from the BSR:
 ```yaml
 # buf.yaml
 deps:
-  - buf.build/regalium-os/digital-buildings
+  - buf.build/regal-labs/digital-buildings
 ```
 
 Locally — the ontology is a submodule, so clone recursively:

@@ -160,6 +160,41 @@ headers:
         exit 1; }
     echo "All $n source files carry the licence header."
 
+# Publish the module to the BSR.
+#
+#     buf.build/regal-labs/digital-buildings
+#
+# A BSR commit is immutable, so this runs `just ci` first rather than trusting
+# the working tree: a push of a stale protobuf/ cannot be taken back, only
+# superseded, and every consumer that resolved the bad commit keeps it.
+#
+# The push is labelled with the ontology pin, not with a version of our own.
+# Rule 9 makes the upstream revision the schema's identity -- a consumer asking
+# "which ontology is this from?" should be able to answer it from the label as
+# well as from the banner in any single .proto. The label is derived from
+# sync/spec.yaml so it cannot drift from what was actually generated.
+#
+# --git-metadata attaches the commit URL and any branch or tag labels, which is
+# what makes a BSR commit traceable back to the source that produced it. It
+# needs a clean checkout with an `origin` remote.
+[doc("Publish protobuf/ to buf.build/regal-labs/digital-buildings.")]
+push *ARGS: ci
+    #!/usr/bin/env sh
+    set -eu
+    date=$(awk '/^  date:/ {print $2}' sync/spec.yaml)
+    commit=$(awk '/^  commit:/ {print substr($2, 1, 7)}' sync/spec.yaml)
+    if ! git diff --quiet HEAD -- protobuf/ buf.yaml buf.lock; then
+        echo "protobuf/, buf.yaml or buf.lock differ from HEAD. Commit first:" >&2
+        echo "a BSR commit is immutable and should name a git commit that exists." >&2
+        exit 1
+    fi
+    echo "pushing buf.build/regal-labs/digital-buildings"
+    echo "  ontology $date ($commit)"
+    buf push --git-metadata \
+        --label "ontology-$date" \
+        --label "ontology-$commit" \
+        {{ARGS}}
+
 # Everything CI runs.
 [doc("Everything CI checks.")]
 ci: lint headers verify-sync verify-docs verify-ordinals
