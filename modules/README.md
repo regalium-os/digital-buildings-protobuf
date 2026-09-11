@@ -55,8 +55,9 @@ the generator does not read a byte of it.
 | Path | Read by `sync` | What it is |
 | --- | --- | --- |
 | `ontology/yaml/resources/` | **yes, all of it** | the vocabulary: seven facets, 122 YAML files |
-| `ontology/docs/` | no | upstream's prose. `model.md` is the authority for rule 7, `ontology.md` for rules 5, 12 and 13 |
-| `ontology/rdf/` | no | an RDF rendering of the same model |
+| `ontology/docs/` | no | upstream's prose, and the authority for everything below. `ontology.md` defines the components, `model.md` the general-type convention, `ontology_config.md` the YAML syntax and its validation rules, `connections.md` the direction of every relationship, `building_config.md` the instance format, `model_hvac.md` the HVAC conventions, `faq.md` the entity categories |
+| `ontology/docs/learning/` | no | 16 PDF lesson decks covering the same ground as the Markdown |
+| `ontology/rdf/` | no | a 2.2 MB RDF rendering **generated from** the YAML by upstream's own tool. It is an output, not a second source |
 | `tools/`, `ibr/`, `styles/` | no | upstream's Python validator, the IBR format, lint config |
 
 ## The seven facets
@@ -114,6 +115,19 @@ exhaust_fan_run_command
   command    point_type     → OPTIONAL, writable
 ```
 
+Per-field limits: one each of aggregation descriptor, aggregation, measurement
+descriptor, measurement and point type; up to ten descriptors and ten
+components. Only the point type is required.
+
+**`limit` and `max` are not synonyms, and the distinction is load-bearing.**
+`model_hvac.md` reserves `max` and `min` for *aggregation* — the maximum among
+several instances of a field — and uses the `limit` descriptor for a boundary
+condition on one. So `high_limit_supply_air_temperature_setpoint` is a reset
+band on a single setpoint, while `max_supply_air_temperature_setpoint` would
+mean the largest setpoint across several devices. An operating limit is
+therefore a **field** in its own right, and is unrelated to the `fixed_*` and
+`flexible_*` value bounds below.
+
 The ontology is explicit that **the subfield set is the field's identity, not
 the name**: `zone_air_temperature_sensor` and `air_zone_temperature_sensor`
 are the same field. A proto field name has thrown that set away, which is the
@@ -132,11 +146,20 @@ literals:
   - INACTIVE
 ```
 
-Which of the three decides the proto type, and the two bound kinds are **not
-the same claim**. `fixed_*` is a constraint and becomes a `buf.validate` rule;
-`flexible_*` is an expectation and becomes a comment and an annotation, never
-a rule. A sensor reading outside its flexible range is a fault to report, not
-a message to reject — see rule 13.
+Which of the three decides the proto type. A numeric range is always exactly
+two entries, one min and one max, and each may independently be fixed or
+flexible — which is why all four combinations appear.
+
+The two bound kinds are **not the same claim**, and `ontology_config.md` is
+explicit about why. "Fixed" means the value "should never be changed and
+should always apply across all entities that have the field" — a constraint,
+so it becomes a `buf.validate` rule. "Flexible" means the value "may be
+adjusted through the range calculation pipeline, which periodically calculates
+new ranges for fields by using the interquartile-range method on timeseries
+data". A flexible bound is therefore a *fitted statistic that upstream
+recalculates*, not a contract. Enforcing one would reject exactly the
+out-of-range telemetry an operator needs to see, and would start failing
+whenever upstream refits it — see rule 13.
 
 19 of the numeric literals name no measurement subfield. They have no quantity
 kind and so no unit, and are integers rather than quantities.
@@ -165,6 +188,14 @@ is explicit, and `TestStatesAreNotBooleans` pins it.
 gets 40 shared enums rather than 602. Three sets cover 528 fields on their
 own: `ACTIVE`/`INACTIVE`, `OPEN`/`CLOSED`, `ON`/`OFF`.
 
+Which fields are multistate is also derivable, and upstream states it twice.
+`ontology_config.md` says "any field with a status, alarm, mode, or command
+point type"; `ontology.md` refines it — status and mode are *always*
+multistates, and a command is one "if not given a measurement subfield". The
+generator does not apply that rule: it reads the states the YAML actually
+lists, which is more direct. The rule is still worth keeping as a cross-check,
+because a field that should carry states and does not would pass silently.
+
 ### units — two value shapes under one key
 
 ```yaml
@@ -192,15 +223,50 @@ about what the number means.
 
 ### connections — the ERD's only true edges
 
-Nine, and each is instance-level: a building config asserts them between
-entities, and no entity type declares which it accepts.
+Nine, global-only, and each is instance-level: a building config asserts them
+between entities. An entity type *may* declare required connections — the
+syntax is `<source type>: <connection type>` under a `connections:` key — but
+upstream marks it "not yet implemented" and no type in this revision uses one.
 
 `CONTAINS` · `CONTROLS` · `FEEDS` · `FULLY_AGGREGATES` · `HAS_PART` ·
 `HAS_RANGE` · `MEASURES` · `MEASURES_TYPE` · `PARIALLY_AGGREGATES`
 
 `PARIALLY_AGGREGATES` is an upstream typo for "partially". It is kept verbatim
 because it is the wire value, and correcting it here would desynchronise this
-schema from every config written against the ontology.
+schema from every config written against the ontology. Note that
+`connections.md` writes the *corrected* spelling in its own example, so
+upstream's prose and upstream's YAML disagree; the YAML is what validates.
+
+#### The entity holding the connection is the target
+
+This is the one thing about connections that is easy to get backwards, and
+every definition is phrased to make it explicit: "**Source** provides some
+media to **Target**". The `connections` block is declared on the **target**,
+keyed by the **source**'s GUID, with a list of connection types as the value:
+
+```yaml
+# from connections.md: an AHU feeds air to a VAV.
+# The block is on the VAV; the key is the AHU.
+VAV-GUID:
+  code: VAV 1-2
+  connections:
+    AHU-GUID:
+    - FEEDS
+```
+
+All nine follow it: the room holds `CONTAINS` naming the building, the
+luminaire holds `CONTROLS` naming the lighting control module, the pump holds
+`HAS_PART` naming the chilled water system, the breaker meter holds
+`FULLY_AGGREGATES` naming the panel meter.
+
+So on a generated resource, **every entry in `connections` names the source**
+— the entity acting *on* this one. The emitted `Connection.entity` is
+currently documented as "the resource name of the entity at the other end",
+which is direction-agnostic and leaves a consumer free to populate it either
+way. Writing `ahu.connections = [{FEEDS, vav}]` reads naturally and is the
+exact inverse of what the ontology means. Naming the field `source` would
+close that, and it is a generator change (`sync/emit`), not an edit to the
+1,165 emitted copies.
 
 ### entity types — four levels, and rule 7 cuts between two of them
 
@@ -215,12 +281,37 @@ namespace         ELECTRICAL              13 of them, plus global
                                              never a message
 ```
 
-| Flag | Count | Becomes |
-| --- | --- | --- |
-| `is_abstract: true` | 844 | nothing on its own; its fields flow into whatever implements it |
-| `is_canonical: true` | 1,587 | an enum value, carrying its exact field sets in an annotation |
-| declared in `GENERALTYPES.yaml` | 82 with variants | a resource — the message |
-| neither flag | 206 | see **What the generator drops**, below |
+| Flag | Count | Upstream meaning | Becomes |
+| --- | --- | --- | --- |
+| `is_abstract: true` | 844 | "cannot be assigned directly to an entity" | nothing on its own; its fields flow into whatever implements it |
+| `is_canonical: true` | 1,587 | "this is a preferred type in your model" | an enum value, carrying its exact field sets in an annotation |
+| `allow_undefined_fields: true` | 23 | a **passthrough type** — see below | nothing; the flag is not read |
+| declared in `GENERALTYPES.yaml` | 82 with variants | a convention, not a structure | a resource — the message |
+| neither flag | 206 | an ordinary, assignable, non-preferred type | see **What the generator drops**, below |
+
+**`is_abstract` is what prevents assignment to an entity, not `is_canonical`.**
+That distinction decides how much the last row costs. `is_canonical` only
+marks a type as curated — "the `is_canonical` flag lets the modeler
+differentiate between 'official' curated types (canonical) and everything
+else". So the ontology has **1,793 types a building config may legally name**,
+and the schema's `entity_type` enums cover 1,587 of them.
+
+#### Passthrough types
+
+`allow_undefined_fields: true` is a first-class concept and not a comment. A
+passthrough type "does not directly correspond to a logical entity in the
+model. Instead, a passthrough entity provides translations that will be linked
+to one or more other entities", and entities of the type may "define
+translations for fields that are not listed as required or optional on this
+type". It is mutually exclusive with `is_abstract`, and nothing may inherit
+from it.
+
+23 types carry it: the 22 `*_INITIAL` onboarding types and
+`GATEWAYS/PASSTHROUGH`. **`sync` does not read the flag at all.** For the
+`*_INITIAL` types that costs nothing today, since they are dropped anyway. For
+`PASSTHROUGH` it does: it sits in `GATEWAYS/GENERALTYPES.yaml`, so it becomes
+the resource `PassthroughGateway` — a closed message with zero standard fields
+— when the one thing upstream says about it is that its field set is open.
 
 A canonical type's general type is its name up to the first `_`, cross-checked
 against the namespace's `GENERALTYPES.yaml`. That prefix is a *convention*,
@@ -229,6 +320,21 @@ not a rule the ontology enforces, and one type breaks it:
 `implements` to a declared general type is the fallback, and it is not a guess
 — it is the ontology stating the relationship outright, which is better
 evidence than the name.
+
+> **The resource set hangs on a file name upstream says it ignores.**
+> `ontology_config.md`: "File names and subfolder hierarchy below the reserved
+> folder names are ignored for the purposes of constructing the ontology. All
+> files in all folders under a reserved folder will be read and consolidated
+> into the model as if they had been defined in a single file." There is no
+> `is_general_type` flag; `model.md` calls `GENERALTYPES.yaml` a convention and
+> carries an open "TODO: structurally define how general types are identified".
+>
+> So `sync` reads a signal the ontology itself discards, and it is the signal
+> that decides which 112 types become resources. Upstream renaming, splitting
+> or merging that file changes the entire package layout without changing a
+> single type — and because the file name is not part of the model, no upstream
+> validation would flag it. There is no better signal available today; the
+> exposure is worth knowing rather than fixing.
 
 #### The file names inside `entity_types/` are a convention
 
@@ -343,6 +449,102 @@ carries a type and the *resource name* of the other end, with
 `(google.api.resource_reference).type = "*"`. A floor does not hold its fan
 coil units.
 
+## The docs describe more than the YAML defines
+
+`ontology/docs/` is the authority on what things *mean*. It is not authority on
+what *exists*: its examples cite several types and one connection that are not
+in this revision's YAML at all.
+
+| Cited in docs | In the YAML? | Where |
+| --- | --- | --- |
+| `ELECTRICAL/MSB` | no | `meter_systems.md`, twice |
+| `LIGHTING/LIGHTING_FIXTURE` | no | `building_config.md` |
+| `LIGHTING/SWITCH_GROUP` | no | `building_config.md` |
+| `FACILITIES/ZONE` | no | `hvac_ahu.md` |
+| `CONNECTS_TO` | no | `building_config.md`, four times |
+| `PARTIALLY_AGGREGATES` | no — the YAML has `PARIALLY_AGGREGATES` | `connections.md` |
+
+**The YAML is authoritative for what exists; the docs are authoritative for
+what it means.** The generator reads only the YAML, which is right — but it
+means a reader checking a doc example against the emitted schema will find
+things missing that were never there.
+
+One case is sharper than drift. `meter_systems.md` instructs the modeller to
+"create a loadtype entity" of type `METERS/LOADTYPE_MAIN`, and all twelve
+`LOADTYPE_*` types are `is_abstract: true` — which `ontology.md` defines as
+"should only be used in inheritance and **not directly associated with any
+entities**". Upstream's own documents disagree about whether those twelve can
+be instantiated. The generator follows the flag and drops them, so a config
+written to `meter_systems.md` names a type this schema cannot express.
+
+## The building config is the instance format, and the schema is missing four of its fields
+
+`building_config.md` is the format a real deployment writes. Most of it maps
+onto the schema cleanly and confirms decisions already made — entity
+`operation` values of `ADD`, `DELETE`, `UPDATE` and `EXPORT` are Create,
+Delete, Update and Get; the per-entity `update_mask` is AIP-134's; the new
+format keys entities by GUID and carries `code` as a field, which is why rule
+10 needs all three identifiers.
+
+Four things it defines have no representation in the emitted protos:
+
+| Config field | What it does | Status |
+| --- | --- | --- |
+| `etag` | "required for all entities under an `UPDATE` configuration", compared against the backend datastore so an update only applies if the config is in sync | **absent**; this is AIP-154 optimistic concurrency, and the ontology's own update model depends on it |
+| `cloud_device_id` | the registry id of the reporting device; "mandatory when a translation exists" | **absent** |
+| `translate_like` | reuse another entity's translation wholesale | **absent** |
+| `units.key` | the payload path where the device reports its unit, e.g. `pointset.points.temp_1.units` | **absent** — `UnitMapping` carries the unit and the native token but not where to read it from |
+
+`UnitMapping` is also emitted `repeated`, while upstream states "only one unit
+is allowed per field". The schema is laxer than the source, which is the
+direction that lets an invalid config through.
+
+What *is* modelled is modelled well: `FieldTranslation.missing` is upstream's
+`MISSING` sentinel for a field the device lacks, `StateMapping.native_values`
+is `repeated` because a standard state may map to several native values
+(`CLOSED: ["2", "3"]`), and `ValueRange` matches `value_range`.
+
+### Link got the direction right; Connection did not
+
+Both describe the same shape — another entity acting on this one — and
+`building_config.md` annotates the connections block in its own example with
+"**Listed entities are sources on connections**". `Link` says so:
+
+```proto
+message Link {
+  string source = 1 [(google.api.resource_reference).type = "*"];
+  string target_field = 2;   // a field on this entity
+  string source_field = 3;   // a field on the source entity
+}
+```
+
+`Connection` does not — it calls the same thing `entity`, "the resource name
+of the entity at the other end". Two messages, one direction, two names. The
+fix is to make `Connection` read like `Link`.
+
+## Three entity categories the schema flattens
+
+`faq.md` and `building_config.md` divide every entity three ways, and the
+division decides which blocks an entity carries:
+
+| Category | What it is | Carries |
+| --- | --- | --- |
+| **logical** | the thing you actually want to model and analyse — a VAV, an AHU | a canonical type |
+| **reporting** | the thing that sends telemetry — often a controller or gateway | a `translation`, and `cloud_device_id` |
+| **virtual** | a logical device with no telemetry of its own; its data is assembled from others | `links` |
+
+A reporting entity may also be logical, and virtual entities usually are. The
+passthrough types above are the fourth corner: a gateway "receiving a throwaway
+type purely for translation support" so that several virtual entities can link
+through it.
+
+The generated resources carry `translations`, `links` and `connections` all
+three, on every resource, all optional — which is permissive enough to express
+any of the categories and says nothing about which one an instance is. That is
+a defensible flattening rather than a gap, but it is a flattening, and a
+validator built on this schema cannot reject a virtual entity that also
+declares a translation.
+
 ## Worked example: ELECTRICAL, end to end
 
 `just erd electrical`:
@@ -437,11 +639,18 @@ their fields flow into whatever does. The remaining 177 are unreachable, and
 | `*_INITIAL` | 22 | 22 | 0 |
 | `*_UNDEFINED` | 4 | 4 | 0 |
 
-The first group is upstream saying outright that this is not a standard type,
-and dropping it is right. `*_INITIAL` are onboarding placeholders carrying
-`allow_undefined_fields: true` and the comment "not to be permanently applied
-to entities"; they declare no fields and dropping them is right too, as is
-`*_UNDEFINED`.
+Upstream's own semantics settle two of the four rows. `model.md` says
+"sometimes devices are so bespoke as to not be worth defining as `canonical`",
+which is exactly what the first row is, so dropping it is right. The
+`*_INITIAL` types are passthrough types — open field sets by design, declaring
+no fields of their own — and a closed message is the wrong shape for one, so
+dropping them is right too, as is `*_UNDEFINED`.
+
+What it does *not* settle is assignability. `is_abstract` is the flag that
+stops a type being attached to an entity, and none of these 177 carry it, so a
+building config may legally name any of them. Dropping a type therefore means
+the schema cannot express a config the ontology accepts — for the bespoke
+first row that is a deliberate trade, and for the second row it is not.
 
 **The second group is the one that matters**, and `ELECTRICAL/BATT_STD` is the
 clearest case:
@@ -462,6 +671,10 @@ and two fields** — `manufacturer_label` and `model_label`, inherited from
 outright; `METERS/EM_ION`, `HVAC/ZONE_HVAC`, `HVAC/HUM_RHHC`,
 `LIGHTING/LTGW_BS` and the eight `HVAC/DWST_*` types are others. The largest
 by declared fields is `HVAC/FCU_RHC_DFVSC_RTC` at 14.
+
+Read against upstream, `is_canonical: false` on `BATT_STD` is a statement that
+it is not a *curated* type — not that it is unusable. An entity can be a
+`BATT_STD` today, and this schema has no way to say so.
 
 A third slice of that group is 11 types sitting in `HVAC/ABSTRACT.yaml`
 without `is_abstract: true` — `BSWTC`, `SSWTC`, `SRWISOVM` and so on. Those
@@ -509,11 +722,19 @@ What a bump can break, in the order it will bite you:
 
 ## Upstream, for reading
 
-- [Ontology concepts](https://github.com/google/digitalbuildings/blob/master/ontology/docs/ontology.md)
-  — subfields, the field grammar, equivalence, enumeration, multistates
-- [Abstract model](https://github.com/google/digitalbuildings/blob/master/ontology/docs/model.md)
-  — general types, abstract functional groups, canonical types
-- [Ontology configuration](https://github.com/google/digitalbuildings/blob/master/ontology/docs/ontology_config.md)
-  — the YAML file formats this page describes
-- [Building configuration](https://github.com/google/digitalbuildings/blob/master/ontology/docs/building_config.md)
-  — translations, links, connections, INITIALIZE/UPDATE
+Everything in `ontology/docs/`, in the order it pays to read it. All were read
+for this file; the citations above are theirs, not this repository's.
+
+| Document | What it settles |
+| --- | --- |
+| [`ontology.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/ontology.md) | the components. Subfield categories and the field grammar, equivalence by subfield set, enumeration, namespace elevation, and the flag definitions — `is_abstract` blocks assignment, `is_canonical` marks curation, `allow_undefined_fields` makes a passthrough |
+| [`ontology_config.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/ontology_config.md) | the YAML syntax and every validation rule. Fixed vs flexible bounds and the IQR pipeline; unit aliases; that file names are ignored when constructing the ontology |
+| [`model.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/model.md) | the general-type convention, `GENERALTYPES.yaml` and `ABSTRACT.yaml`, and why bespoke devices are left non-canonical |
+| [`connections.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/connections.md) | all nine relationships, each with a worked example — and that the block always sits on the target |
+| [`building_config.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/building_config.md) | the instance format: translations, links, `etag`, `cloud_device_id`, INITIALIZE/UPDATE and the per-entity operations |
+| [`model_hvac.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/model_hvac.md) | HVAC modelling doctrine, the general-type "smell tests", the three system types, and `limit` vs `max` |
+| [`faq.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/faq.md) | logical, reporting and virtual entities; what to model and what not to |
+| [`hvac_ahu.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/hvac_ahu.md), [`hvac_fcu.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/hvac_fcu.md), [`hvac_chws.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/hvac_chws.md), [`hvac_hws.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/hvac_hws.md) | worked building configs per equipment class, with the connection patterns each requires |
+| [`meter_systems.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/meter_systems.md) | load types and meter hierarchies, and the `MEASURES` / `MEASURES_TYPE` / `*_AGGREGATES` pattern |
+| [`overview.md`](https://github.com/google/digitalbuildings/blob/master/ontology/docs/overview.md) | the extension and validation workflow: propose YAML, pass the type validator, then validate instances |
+| `docs/learning/` | 16 PDF decks, two modules. Not read for this file — the Markdown above covers the same ground |
