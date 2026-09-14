@@ -118,3 +118,21 @@ The VS Code
 (configured by `workspace.protobuf.yaml`) also disagrees with the CLI in
 places -- it resolves imports differently and reports findings the CLI does
 not. **The CLI is authoritative**; rule 1 is about what `just aip` reports.
+
+One cause of that disagreement was **scope**, and it is fixed rather than
+tolerated. `just aip` globs `find protobuf` and `buf.yaml` excludes `build`
+and `modules`, but the extension defaults to the whole workspace folder -- so
+it linted `modules/digitalbuildings/ibr/ibr_sdk/proto/ibr.proto`, the one
+`.proto` in the pinned checkout. That file is Google's Internal Building
+Representation, a spatial model this repository neither reads nor generates
+from; it declares no package and no `java_*` options because it was never
+written to AIP, and it produced 31 findings whose only available fix would be
+editing another project's source inside a submodule. `workspace.protobuf.yaml`
+now carries the same two excludes `buf.yaml` has.
+
+That is scope, not suppression, and rule 1 stands: no rule is disabled, there
+is still no `.api-linter.yaml`, and the count over what this repository does
+own is unchanged at zero across 1,170 files. Rule 1's own remedy when two
+tools disagree is to narrow a tool's scope rather than except a rule. A
+finding the extension reports on a file under `protobuf/` is still a real
+finding -- check it against `just aip` before believing either.

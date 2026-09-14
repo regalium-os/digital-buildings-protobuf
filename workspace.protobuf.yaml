@@ -1,5 +1,35 @@
 # Proto workspace config (Google API Linter)
 # See: https://github.com/machanirobotics/google-api-linter-vscode
+#
+# This file exists to give the editor the same scope the CLI already has.
+# `just aip` globs `find protobuf -name '*.proto'` and buf.yaml excludes
+# `build` and `modules`, so neither tool has ever seen the trees below. The
+# extension defaults to the workspace folder, which is wider than either, and
+# without these entries it reports findings on files nothing in this
+# repository lints, owns or publishes.
+#
+# `exclude` is not a suppression and rule 1 is intact: no rule is disabled
+# here, no `.api-linter.yaml` exists, and every rule still fires in full over
+# everything this repository writes. Rule 1's own remedy for two tools
+# disagreeing is to narrow a tool's scope rather than except a rule -- this
+# narrows the editor's scope to match the CLI's, which docs/references.md
+# names as authoritative.
+
+exclude:
+  # The pinned upstream ontology checkout (rule 9). Read-only: modules/ holds
+  # every upstream this repository reads and nothing it writes. The ontology
+  # is YAML, but digitalbuildings also ships one proto --
+  # ibr/ibr_sdk/proto/ibr.proto, Google's Internal Building Representation, a
+  # spatial model unrelated to the schema generated here. It declares no
+  # package and no java_* options because it was never written to AIP, so
+  # linting it produces findings whose only possible fix would be editing
+  # another project's source inside a submodule -- a change the next
+  # `git submodule update` discards.
+  - modules
+  # Exported copies of googleapis, protovalidate and the well-known types,
+  # written by scripts/export-protos.sh for the buffers CLI. Same exclusion
+  # as buf.yaml's, for the same reason: they are other people's protos.
+  - build
 
 # Optional: list of directories containing .proto files (default: this directory)
 # proto_path: .
