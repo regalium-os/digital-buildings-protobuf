@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+authors:
+  - family-names: "Sipple"
+    given-names: "John"
+title: "A general-purpose method for applying Explainable AI for Anomaly Detection"
+url: "https://link.springer.com/chapter/10.1007/978-3-031-16564-1_16#citeas"
+preferred-citation:
+  type: conference-paper
+  authors:
+    - family-names: "Sipple"
+      given-names: "John"
+  title: "A general-purpose method for applying Explainable AI for Anomaly Detection"
+  year: 2022
+  url: "https://link.springer.com/chapter/10.1007/978-3-031-16564-1_16#citeas"
+  identifiers:
+    - type: doi
+      value: "10.1007/978-3-031-16564-1_16"
